@@ -125,13 +125,13 @@ impl HotkeyOverlay {
     }
 }
 
-fn format_bind(binds: &[Bind], mod_key: ModKey, action: &Action) -> Option<(String, String)> {
+fn format_bind(binds: &[Bind], mod_key: ModKey, actions: &[Action]) -> Option<(String, String)> {
     let mut bind_with_non_null = None;
     let mut bind_with_custom_title = None;
     let mut found_null_title = false;
 
     for bind in binds {
-        if bind.action != *action {
+        if bind.actions != *actions {
             continue;
         }
 
@@ -162,7 +162,13 @@ fn format_bind(binds: &[Bind], mod_key: ModKey, action: &Action) -> Option<(Stri
     } else {
         String::from("(not bound)")
     };
-    let title = title.unwrap_or_else(|| action_name(action));
+    let title = title.unwrap_or_else(|| {
+        actions
+            .into_iter()
+            .map(action_name)
+            .collect::<Vec<_>>()
+            .join(", ")
+    });
 
     Some((format!(" {key} "), title))
 }
@@ -188,111 +194,117 @@ fn render(
     let binds = &config.binds.0;
 
     // Collect actions that we want to show.
-    let mut actions = vec![&Action::ShowHotkeyOverlay];
+    let mut actions: Vec<&[Action]> = vec![&[Action::ShowHotkeyOverlay]];
 
     // Prefer Quit(false) if found, otherwise try Quit(true), and if there's neither, fall back to
     // Quit(false).
-    if binds.iter().any(|bind| bind.action == Action::Quit(false)) {
-        actions.push(&Action::Quit(false));
-    } else if binds.iter().any(|bind| bind.action == Action::Quit(true)) {
-        actions.push(&Action::Quit(true));
+    if binds
+        .iter()
+        .any(|bind| bind.actions == vec![Action::Quit(false)])
+    {
+        actions.push(&[Action::Quit(false)]);
+    } else if binds
+        .iter()
+        .any(|bind| bind.actions == vec![Action::Quit(true)])
+    {
+        actions.push(&[Action::Quit(true)]);
     } else {
-        actions.push(&Action::Quit(false));
+        actions.push(&[Action::Quit(false)]);
     }
 
-    actions.extend(&[
-        &Action::CloseWindow,
-        &Action::FocusColumnLeft,
-        &Action::FocusColumnRight,
-        &Action::MoveColumnLeft,
-        &Action::MoveColumnRight,
-        &Action::FocusWorkspaceDown,
-        &Action::FocusWorkspaceUp,
+    actions.extend([
+        [Action::CloseWindow].as_slice(),
+        [Action::FocusColumnLeft].as_slice(),
+        [Action::FocusColumnRight].as_slice(),
+        [Action::MoveColumnLeft].as_slice(),
+        [Action::MoveColumnRight].as_slice(),
+        [Action::FocusWorkspaceDown].as_slice(),
+        [Action::FocusWorkspaceUp].as_slice(),
     ]);
 
     // Prefer move-column-to-workspace-down, but fall back to move-window-to-workspace-down.
     if let Some(bind) = binds
         .iter()
-        .find(|bind| matches!(bind.action, Action::MoveColumnToWorkspaceDown(_)))
+        .find(|bind| matches!(bind.actions[..], [Action::MoveColumnToWorkspaceDown(_)]))
     {
-        actions.push(&bind.action);
+        actions.push(bind.actions.as_slice());
     } else if binds
         .iter()
-        .any(|bind| matches!(bind.action, Action::MoveWindowToWorkspaceDown))
+        .any(|bind| matches!(bind.actions[..], [Action::MoveWindowToWorkspaceDown]))
     {
-        actions.push(&Action::MoveWindowToWorkspaceDown);
+        actions.push(&[Action::MoveWindowToWorkspaceDown]);
     } else {
-        actions.push(&Action::MoveColumnToWorkspaceDown(true));
+        actions.push(&[Action::MoveColumnToWorkspaceDown(true)]);
     }
 
     // Same for -up.
     if let Some(bind) = binds
         .iter()
-        .find(|bind| matches!(bind.action, Action::MoveColumnToWorkspaceUp(_)))
+        .find(|bind| matches!(bind.actions[..], [Action::MoveColumnToWorkspaceUp(_)]))
     {
-        actions.push(&bind.action);
+        actions.push(&bind.actions);
     } else if binds
         .iter()
-        .any(|bind| matches!(bind.action, Action::MoveWindowToWorkspaceUp))
+        .any(|bind| matches!(bind.actions[..], [Action::MoveWindowToWorkspaceUp]))
     {
-        actions.push(&Action::MoveWindowToWorkspaceUp);
+        actions.push(&[Action::MoveWindowToWorkspaceUp]);
     } else {
-        actions.push(&Action::MoveColumnToWorkspaceUp(true));
+        actions.push(&[Action::MoveColumnToWorkspaceUp(true)]);
     }
 
-    actions.extend(&[
-        &Action::SwitchPresetColumnWidth,
-        &Action::MaximizeColumn,
-        &Action::ConsumeOrExpelWindowLeft,
-        &Action::ConsumeOrExpelWindowRight,
-        &Action::ToggleWindowFloating,
-        &Action::SwitchFocusBetweenFloatingAndTiling,
-        &Action::ToggleOverview,
+    actions.extend([
+        [Action::SwitchPresetColumnWidth].as_slice(),
+        [Action::MaximizeColumn].as_slice(),
+        [Action::ConsumeOrExpelWindowLeft].as_slice(),
+        [Action::ConsumeOrExpelWindowRight].as_slice(),
+        [Action::ToggleWindowFloating].as_slice(),
+        [Action::SwitchFocusBetweenFloatingAndTiling].as_slice(),
+        [Action::ToggleOverview].as_slice(),
     ]);
 
     // Screenshot is not as important, can omit if not bound.
     if let Some(bind) = binds
         .iter()
-        .find(|bind| matches!(bind.action, Action::Screenshot(_)))
+        .find(|bind| matches!(bind.actions[..], [Action::Screenshot(_)]))
     {
-        actions.push(&bind.action);
+        actions.push(&bind.actions);
     }
 
     // Add actions with a custom hotkey-overlay-title.
     for bind in binds {
         if matches!(bind.hotkey_overlay_title, Some(Some(_))) {
             // Avoid duplicate actions.
-            if !actions.contains(&&bind.action) {
-                actions.push(&bind.action);
+            if !actions.contains(&bind.actions.as_slice()) {
+                actions.push(bind.actions.as_slice());
             }
         }
     }
 
     // Add the spawn actions.
     for bind in binds.iter().filter(|bind| {
-        matches!(bind.action, Action::Spawn(_))
+        matches!(bind.actions[..], [Action::Spawn(_)])
             // Only show binds with Mod or Super to filter out stuff like volume up/down.
             && (bind.key.modifiers.contains(Modifiers::COMPOSITOR)
                 || bind.key.modifiers.contains(Modifiers::SUPER))
             // Also filter out wheel and touchpad scroll binds.
             && matches!(bind.key.trigger, Trigger::Keysym(_))
     }) {
-        let action = &bind.action;
+        let action = &bind.actions;
 
         // We only show one bind for each action, so we need to deduplicate the Spawn actions.
-        if !actions.contains(&action) {
+        if !actions.contains(&action.as_slice()) {
             actions.push(action);
         }
     }
 
     if config.hotkey_overlay.hide_not_bound {
         // Only keep actions that have been bound
-        actions.retain(|&action| binds.iter().any(|bind| bind.action == *action))
+        actions.retain(|&action| binds.iter().any(|bind| bind.actions == *action))
     }
 
     let strings = actions
         .into_iter()
-        .filter_map(|action| format_bind(binds, mod_key, action))
+        .filter_map(|acts| format_bind(binds, mod_key, acts))
         .collect::<Vec<_>>();
 
     let mut font = FontDescription::from_string(FONT);
@@ -556,9 +568,9 @@ mod tests {
     use super::*;
 
     #[track_caller]
-    fn check(config: &str, action: Action) -> String {
+    fn check(config: &str, actions: &[Action]) -> String {
         let config = Config::parse("test.kdl", config).unwrap();
-        if let Some((key, title)) = format_bind(&config.binds.0, ModKey::Super, &action) {
+        if let Some((key, title)) = format_bind(&config.binds.0, ModKey::Super, actions) {
             format!("{key}: {title}")
         } else {
             String::from("None")
@@ -568,7 +580,7 @@ mod tests {
     #[test]
     fn test_format_bind() {
         // Not bound.
-        assert_snapshot!(check("", Action::Screenshot(true)), @" (not bound) : Take a Screenshot");
+        assert_snapshot!(check("", &[Action::Screenshot(true)]), @" (not bound) : Take a Screenshot");
 
         // Bound with a default title.
         assert_snapshot!(
@@ -576,7 +588,7 @@ mod tests {
                 r#"binds {
                     Mod+P { screenshot; }
                 }"#,
-                Action::Screenshot(true),
+                &[Action::Screenshot(true)],
             ),
             @" Super + P : Take a Screenshot"
         );
@@ -587,7 +599,7 @@ mod tests {
                 r#"binds {
                     Mod+P hotkey-overlay-title="Hello" { screenshot; }
                 }"#,
-                Action::Screenshot(true),
+                &[Action::Screenshot(true)],
             ),
             @" Super + P : Hello"
         );
@@ -599,7 +611,7 @@ mod tests {
                     Mod+P { screenshot; }
                     Print { screenshot; }
                 }"#,
-                Action::Screenshot(true),
+                &[Action::Screenshot(true)],
             ),
             @" Super + P : Take a Screenshot"
         );
@@ -611,7 +623,7 @@ mod tests {
                     Mod+P { screenshot; }
                     Print hotkey-overlay-title="My Cool Bind" { screenshot; }
                 }"#,
-                Action::Screenshot(true),
+                &[Action::Screenshot(true)],
             ),
             @" PrtSc : My Cool Bind"
         );
@@ -623,7 +635,7 @@ mod tests {
                     Mod+P hotkey-overlay-title="First" { screenshot; }
                     Print hotkey-overlay-title="My Cool Bind" { screenshot; }
                 }"#,
-                Action::Screenshot(true),
+                &[Action::Screenshot(true)],
             ),
             @" Super + P : First"
         );
@@ -635,7 +647,7 @@ mod tests {
                     Mod+P { screenshot; }
                     Print hotkey-overlay-title=null { screenshot; }
                 }"#,
-                Action::Screenshot(true),
+                &[Action::Screenshot(true)],
             ),
             @"None"
         );
@@ -647,7 +659,7 @@ mod tests {
                     Mod+P hotkey-overlay-title="Hello" { screenshot; }
                     Print hotkey-overlay-title=null { screenshot; }
                 }"#,
-                Action::Screenshot(true),
+                &[Action::Screenshot(true)],
             ),
             @" Super + P : Hello"
         );
