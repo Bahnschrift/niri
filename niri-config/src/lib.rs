@@ -1611,7 +1611,9 @@ pub struct Binds(pub Vec<Bind>);
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bind {
     pub key: Key,
-    pub action: Action,
+    pub actions: Vec<Action>,
+    // TODO: Add option for a sleep between actions
+    // pub action_interval: Option<Duration>,
     pub repeat: bool,
     pub cooldown: Option<Duration>,
     pub allow_when_locked: bool,
@@ -3697,7 +3699,7 @@ where
         // even if their contents are not valid.
         let dummy = Self {
             key,
-            action: Action::Spawn(vec![]),
+            actions: vec![Action::Spawn(vec![])],
             repeat: true,
             cooldown: None,
             allow_when_locked: false,
@@ -3705,14 +3707,9 @@ where
             hotkey_overlay_title: None,
         };
 
-        if let Some(child) = children.next() {
-            for unwanted_child in children {
-                ctx.emit_error(DecodeError::unexpected(
-                    unwanted_child,
-                    "node",
-                    "only one action is allowed per keybind",
-                ));
-            }
+        let mut actions = vec![];
+
+        for child in children {
             match Action::decode_node(child, ctx) {
                 Ok(action) => {
                     if !matches!(action, Action::Spawn(_)) {
@@ -3731,28 +3728,24 @@ where
                         allow_inhibiting = false;
                     }
 
-                    Ok(Self {
-                        key,
-                        action,
-                        repeat,
-                        cooldown,
-                        allow_when_locked,
-                        allow_inhibiting,
-                        hotkey_overlay_title,
-                    })
+                    actions.push(action);
                 }
                 Err(e) => {
                     ctx.emit_error(e);
-                    Ok(dummy)
+                    return Ok(dummy);
                 }
             }
-        } else {
-            ctx.emit_error(DecodeError::missing(
-                node,
-                "expected an action for this keybind",
-            ));
-            Ok(dummy)
         }
+
+        Ok(Self {
+            key,
+            actions,
+            repeat,
+            cooldown,
+            allow_when_locked,
+            allow_inhibiting,
+            hotkey_overlay_title,
+        })
     }
 }
 
