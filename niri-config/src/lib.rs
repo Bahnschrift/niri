@@ -45,14 +45,8 @@ pub struct Config {
     pub prefer_no_csd: bool,
     #[knuffel(child, default)]
     pub cursor: Cursor,
-    #[knuffel(
-        child,
-        unwrap(argument),
-        default = Some(String::from(
-            "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png"
-        )))
-    ]
-    pub screenshot_path: Option<String>,
+    #[knuffel(child, default)]
+    pub screenshot: Screenshot,
     #[knuffel(child, default)]
     pub clipboard: Clipboard,
     #[knuffel(child, default)]
@@ -1003,6 +997,28 @@ impl Default for Cursor {
             xcursor_size: 24,
             hide_when_typing: false,
             hide_after_inactive_ms: None,
+        }
+    }
+}
+
+#[derive(knuffel::Decode, Debug, PartialEq)]
+pub struct Screenshot {
+    #[knuffel(
+        child,
+        unwrap(argument),
+        default = Some(String::from(
+            "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png"
+        )))
+    ]
+    pub path: Option<String>,
+}
+
+impl Default for Screenshot {
+    fn default() -> Self {
+        Self {
+            path: Some(String::from(
+                "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png",
+            )),
         }
     }
 }
@@ -4096,7 +4112,9 @@ mod tests {
                 hide-after-inactive-ms 3000
             }
 
-            screenshot-path "~/Screenshots/screenshot.png"
+            screenshot {
+                path "~/Screenshots/screenshot.png"
+            }
 
             clipboard {
                 disable-primary
@@ -4650,9 +4668,11 @@ mod tests {
                     3000,
                 ),
             },
-            screenshot_path: Some(
-                "~/Screenshots/screenshot.png",
-            ),
+            screenshot: Screenshot {
+                path: Some(
+                    "~/Screenshots/screenshot.png",
+                ),
+            },
             clipboard: Clipboard {
                 disable_primary: true,
             },
